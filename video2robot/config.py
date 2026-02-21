@@ -25,7 +25,9 @@ PROMPTHMR_CHECKPOINT_DIR = PROMPTHMR_DIR / "data" / "pretrain"
 PROMPTHMR_BODY_MODELS_DIR = PROMPTHMR_DIR / "data" / "body_models"
 
 # Model paths (GMR)
-GMR_BODY_MODELS_DIR = GMR_DIR / "assets" / "body_models"
+# GMR expects a body-model root containing subfolders like `smplx/`.
+# Reuse PromptHMR's downloaded body models by default.
+GMR_BODY_MODELS_DIR = PROMPTHMR_BODY_MODELS_DIR
 
 
 @dataclass
@@ -55,6 +57,18 @@ class SoraConfig:
 
 
 @dataclass
+class SeedanceConfig:
+    """Seedance video generation config"""
+    api_key: Optional[str] = field(default_factory=lambda: os.environ.get("SEEDANCE_API_KEY"))
+    base_url: str = "https://seedanceapi.org/v1"
+    aspect_ratio: str = "16:9"
+    resolution: str = "720p"
+    duration_seconds: int = 8
+    poll_interval: int = 10
+    max_wait_time: int = 600
+
+
+@dataclass
 class PoseConfig:
     """Pose extraction config"""
     # PromptHMR settings
@@ -79,6 +93,7 @@ class PipelineConfig:
     """Full pipeline config"""
     veo: VeoConfig = field(default_factory=VeoConfig)
     sora: SoraConfig = field(default_factory=SoraConfig)
+    seedance: SeedanceConfig = field(default_factory=SeedanceConfig)
     pose: PoseConfig = field(default_factory=PoseConfig)
     robot: RobotConfig = field(default_factory=RobotConfig)
 

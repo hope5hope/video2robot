@@ -1,7 +1,11 @@
 """Viser process manager for 3D visualization."""
 
 import asyncio
+import os
+import shutil
 import socket
+import signal
+import subprocess
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -25,6 +29,7 @@ class ViserSession:
     started_at: datetime
     all_tracks: bool = False
     twist: bool = False
+    material_mode: str = "color"
     state: str = "starting"
     last_error: Optional[str] = None
     stop_requested_at: Optional[datetime] = None
@@ -47,6 +52,7 @@ class ViserSession:
             "ended_at": self.ended_at.isoformat() if self.ended_at else None,
             "all_tracks": self.all_tracks,
             "twist": self.twist,
+            "material_mode": self.material_mode,
             "last_error": self.last_error,
         }
 
@@ -54,7 +60,7 @@ class ViserSession:
 class ViserManager:
     """Manage viser visualization processes."""
 
-    DEFAULT_PORT = 8789
+    DEFAULT_PORT = int(os.environ.get("VISER_FIXED_PORT", "8789"))
 
     def __init__(self):
         self._sessions: dict[str, ViserSession] = {}
@@ -69,19 +75,62 @@ class ViserManager:
         for project in to_remove:
             self._sessions.pop(project, None)
 
+    def _cleanup_orphan_robot_viser_processes(self) -> None:
+        """Best-effort cleanup for orphan robot_viser.py processes."""
+        try:
+            result = subprocess.run(
+                ["pgrep", "-f", "video2robot/visualization/robot_viser.py"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except Exception:
+            return
+
+        if result.returncode != 0 or not result.stdout.strip():
+            return
+
+        active_pids = {
+            int(session.process.pid)
+            for session in self._sessions.values()
+            if session.process and session.process.pid
+        }
+        for token in result.stdout.split():
+            try:
+                pid = int(token)
+            except ValueError:
+                continue
+            if pid in active_pids:
+                continue
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except Exception:
+                continue
+
     def _get_available_port(self) -> int:
-        """Pick an available TCP port for viser."""
+        """Use a fixed port for browser stability."""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 sock.bind(("", self.DEFAULT_PORT))
                 return self.DEFAULT_PORT
         except OSError:
-            pass
+            raise RuntimeError(
+                f"Viser fixed port {self.DEFAULT_PORT} is busy. "
+                "Please stop other robot_viser processes or set VISER_FIXED_PORT."
+            )
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind(("", 0))
-            return sock.getsockname()[1]
+    def _resolve_conda_executable(self) -> str:
+        """Resolve conda executable robustly for web subprocesses."""
+        conda_exe = os.environ.get("CONDA_EXE") or shutil.which("conda")
+        if not conda_exe and Path("/opt/conda/bin/conda").exists():
+            conda_exe = "/opt/conda/bin/conda"
+        if not conda_exe:
+            raise FileNotFoundError(
+                "Could not locate `conda` executable. "
+                "Set CONDA_EXE or ensure conda is in PATH."
+            )
+        return conda_exe
 
     async def start(
         self,
@@ -89,18 +138,25 @@ class ViserManager:
         *,
         all_tracks: bool = True,
         twist: bool = False,
+        material_mode: str = "color",
         phmr_env: str = "phmr",
     ) -> ViserSession:
         """Start viser for a project (non-blocking)."""
         async with self._lock:
             self._cleanup_finished_sessions()
+            self._cleanup_orphan_robot_viser_processes()
+            waiting_for: list[str] = []
             existing = self._sessions.get(project)
             if existing and existing.process.returncode is None and existing.state in {"starting", "running"}:
-                return existing
-
-            waiting_for: list[str] = []
-
-            if project in self._sessions:
+                if (
+                    existing.all_tracks == all_tracks
+                    and existing.twist == twist
+                    and existing.material_mode == material_mode
+                ):
+                    return existing
+                await self._stop_locked(project)
+                waiting_for = [project]
+            elif project in self._sessions:
                 await self._stop_locked(project)
                 waiting_for.append(project)
 
@@ -127,10 +183,11 @@ class ViserManager:
         if not has_robot:
             raise FileNotFoundError(f"Robot motion not found in {project}")
 
+        conda_exe = self._resolve_conda_executable()
         port = self._get_available_port()
         script = PROJECT_ROOT / "video2robot" / "visualization" / "robot_viser.py"
         cmd = [
-            "conda",
+            conda_exe,
             "run",
             "-n",
             phmr_env,
@@ -149,6 +206,7 @@ class ViserManager:
             cmd.append("--all-tracks")
         if twist:
             cmd.append("--twist")
+        cmd.extend(["--material-mode", material_mode])
 
         process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -166,6 +224,7 @@ class ViserManager:
             started_at=datetime.now(),
             all_tracks=all_tracks,
             twist=twist,
+            material_mode=material_mode,
         )
 
         async with self._lock:

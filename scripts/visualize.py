@@ -109,6 +109,7 @@ def visualize_robot_viser(
     robot_type: str | None = None,
     track_index: int = 1,
     all_tracks: bool = False,
+    material_mode: str = "color",
 ):
     """Visualize robot motion in PromptHMR's viser scene (video + camera frustums)."""
     if twist:
@@ -172,6 +173,8 @@ def visualize_robot_viser(
         argv.append("--no-floor")
     if robot_type:
         argv.extend(["--robot-type", str(robot_type)])
+    if material_mode:
+        argv.extend(["--material-mode", str(material_mode)])
 
     print("[RobotViser] Starting robot visualization in viser...")
     print(f"[RobotViser] Env: {phmr_env}")
@@ -241,7 +244,8 @@ def main():
     parser.add_argument("--subsample", type=int, default=1, help="Subsample frames for visualization (robot-viser)")
     parser.add_argument("--cube-size", type=float, default=0.03, help="Cube size (meters) for each link (robot-viser)")
     parser.add_argument("--proxy", action="store_true", help="Use proxy cubes instead of robot meshes (robot-viser)")
-    parser.add_argument("--img-maxsize", type=int, default=320, help="Max image size for frustum textures (robot-viser)")
+    parser.add_argument("--img-maxsize", type=int, default=0, help="Max image size for frustum textures (robot-viser, 0 means no resize)")
+    parser.add_argument("--material-mode", choices=["color", "metal"], default="color", help="Robot appearance in robot-viser")
     parser.add_argument("--no-floor", action="store_true", help="Disable floor rendering (robot-viser)")
     parser.add_argument("--floor-margin", type=float, default=1.5, help="Floor margin around trajectory (robot-viser)")
     parser.add_argument("--frustum-scale", type=float, default=0.4, help="Video camera frustum scale (robot-viser)")
@@ -281,6 +285,7 @@ def main():
             robot_type=args.robot_type,
             track_index=args.robot_track,
             all_tracks=args.robot_all,
+            material_mode=args.material_mode,
         )
     elif args.robot:
         visualize_robot(project_dir, args.robot_type or "unitree_g1", gmr_env=args.gmr_env, twist=args.twist)

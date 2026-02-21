@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -84,7 +86,23 @@ def run_in_conda(env_name: str, argv: list[str], cwd: Path, *, raise_on_error: b
         cwd: Working directory
         raise_on_error: If True, raise RuntimeError on failure; if False, print error
     """
-    cmd = ["conda", "run", "--no-capture-output", "-n", env_name, *argv]
+    # Resolve conda executable robustly (interactive shells may have conda as a function only).
+    conda_exe = os.environ.get("CONDA_EXE") or shutil.which("conda")
+    if not conda_exe and Path("/opt/conda/bin/conda").exists():
+        conda_exe = "/opt/conda/bin/conda"
+
+    if conda_exe:
+        cmd = [conda_exe, "run", "--no-capture-output", "-n", env_name, *argv]
+    else:
+        msg = (
+            "Could not locate `conda` executable. "
+            "Set CONDA_EXE or ensure conda is in PATH."
+        )
+        if raise_on_error:
+            raise RuntimeError(msg)
+        print(f"[Error] {msg}")
+        print("[Info] Falling back to current environment.")
+        cmd = argv
     try:
         result = subprocess.run(cmd, cwd=str(cwd))
     except KeyboardInterrupt:

@@ -1,77 +1,43 @@
-# video2robot
+# video2robot（中文增强版）
 
-End-to-end pipeline: Video (or Prompt) → Human Pose Extraction → Robot Motion Conversion
+视频（或文本动作）到机器人动作的端到端流水线：
 
-## Demo
+`Prompt / Video -> PromptHMR -> SMPL-X -> GMR -> Robot Motion`
 
-<p align="center">
-<video src="https://github.com/user-attachments/assets/a0f1bfb1-7e06-4672-8f6a-320ab60b0bfe" width="800" controls></video>
-</p>
-<p align="center"><b>Demo Video</b></p>
+## 本仓库新增功能
 
-<table>
-<tr>
-<td align="center" width="50%">
-<video src="https://github.com/user-attachments/assets/1d58bac8-173c-499d-b245-65013371d50f" width="400" controls></video>
-<br><b>Backflip</b>
-</td>
-<td align="center" width="50%">
-<video src="https://github.com/user-attachments/assets/94e6d12d-afae-4300-8c5c-c244ad208bdb" width="400" controls></video>
-<br><b>Dance Motion</b>
-</td>
-</tr>
-</table>
+- 接入 `Seedance` 视频生成（默认可用，保留 Veo/Sora）
+- Web UI 中文化，支持：
+  - 文生视频
+  - 上传视频
+  - 自动流水线（生成/提取/重定向）
+- Web 3D 可视化支持机器人外观切换：
+  - 彩色（按角色区分）
+  - 铁皮原色（更真实）
+- 多人轨迹支持：
+  - `--all-tracks` 生成所有轨迹机器人动作
+  - `--robot-all` 在 robot-viser 同时显示多角色
+- 新增 MuJoCo 多机器人录制脚本：
+  - `third_party/GMR/scripts/vis_robot_motion_multi.py`
+  - 支持多个 `robot_motion_track_*.pkl` 同场显示与录制
 
-## Pipeline
+## 环境准备
 
-```
-[Prompt] → Veo → [Video] → PromptHMR → [SMPL-X] → GMR → [Robot Motion]
-```
+需要两个 conda 环境：
 
-## Project Structure
+- `phmr`：视频生成 + 姿态提取 + Web + robot-viser
+- `gmr`：机器人重定向 + MuJoCo 可视化/录制
 
-```
-video2robot/
-├── video2robot/            # Main package
-│   ├── config.py           # Configuration management
-│   ├── pipeline.py         # (Optional) Python API pipeline
-│   ├── cli.py              # Console entrypoint for installation
-│   ├── video/              # Video generation/processing
-│   │   └── veo_client.py   # Google Veo API
-│   ├── pose/               # Pose extraction (PromptHMR wrapper)
-│   │   └── extractor.py
-│   └── robot/              # Robot conversion (GMR wrapper)
-│       └── retargeter.py
-│
-├── scripts/                # CLI scripts
-│   ├── run_pipeline.py     # Full pipeline
-│   ├── generate_video.py   # Veo video generation
-│   ├── extract_pose.py     # Pose extraction
-│   └── convert_to_robot.py # Robot conversion
-│   └── visualize.py        # Result visualization
-│
-├── configs/                # Configuration files
-├── data/                   # Data (gitignored)
-│
-└── third_party/            # External dependencies (submodules)
-    ├── PromptHMR/          # Pose extraction model
-    └── GMR/                # Motion retargeting
-```
-
-## Installation
-
-This project requires **two conda environments**: `gmr` and `phmr`.
+### 1) 克隆（含 submodule）
 
 ```bash
-# Clone repo (with submodules)
-git clone --recursive https://github.com/AIM-Intelligence/video2robot.git
+git clone --recursive https://github.com/hope5hope/video2robot.git
 cd video2robot
-
-# Or initialize submodules after cloning
+# 或
 git submodule update --init --recursive
 ```
 
-### 1. GMR Environment (Robot Retargeting)
+### 2) GMR 环境
 
 ```bash
 conda create -n gmr python=3.10 -y
@@ -79,136 +45,152 @@ conda activate gmr
 pip install -e .
 ```
 
-For details, see [GMR README](third_party/GMR/README.md).
+### 3) PromptHMR 环境（4090/常规 GPU）
 
-### 2. PromptHMR Environment (Pose Extraction)
-
-**For Blackwell GPU (sm_120) users:**
-```bash
-conda create -n phmr python=3.11 -y
-conda activate phmr
-cd third_party/PromptHMR
-bash scripts/install_blackwell.sh
-```
-
-**For other GPUs (Ampere, Hopper, etc.):**
 ```bash
 conda create -n phmr python=3.10 -y
 conda activate phmr
 cd third_party/PromptHMR
-pip install -e .
+bash scripts/install.sh --pt_version=2.4
 ```
 
-For details, see [PromptHMR README](third_party/PromptHMR/README.md).
+> 若 `install.sh` 在你的机器上不稳定，可参考 `01春晚舞蹈机器人复刻.md` 的手动安装方案。
 
-## Usage
+## API 配置
 
-> **Note**: Scripts automatically switch to the appropriate conda environment (`gmr` or `phmr`) as needed. Just ensure both environments are installed - no need to manually activate them.
+在仓库根目录创建 `.env`：
 
 ```bash
-# Full pipeline (action → robot motion) - BASE_PROMPT auto-applied
-python scripts/run_pipeline.py --action "Action sequence:
-The subject walks forward with four steps."
+cp .env.example .env
+```
 
-# Use Sora
-python scripts/run_pipeline.py --action "..." --provider sora
+常用变量：
 
-# Start from existing video (video.mp4 → robot motion)
+- `SEEDANCE_API_KEY=...`
+- `GOOGLE_API_KEY=...`
+- `OPENAI_API_KEY=...`
+
+## 常用命令
+
+### 一键流水线
+
+```bash
+python scripts/run_pipeline.py --action "动作序列：角色向前走四步"
+```
+
+### 从已有视频开始
+
+```bash
 python scripts/run_pipeline.py --video /path/to/video.mp4
+```
 
-# Resume from existing project
-python scripts/run_pipeline.py --project data/video_001
+### 分步运行
 
-# Run individual steps
-python scripts/generate_video.py --action "Action sequence: The subject walks forward."
+```bash
+python scripts/generate_video.py --model seedance --action "动作序列：角色向前走四步"
 python scripts/extract_pose.py --project data/video_001
-python scripts/convert_to_robot.py --project data/video_001
+python scripts/convert_to_robot.py --project data/video_001 --all-tracks
+```
 
-# Visualization (auto env switching)
-python scripts/visualize.py --project data/video_001
+### 可视化（CLI）
+
+```bash
 python scripts/visualize.py --project data/video_001 --pose
+python scripts/visualize.py --project data/video_001 --robot-viser --robot-all
 python scripts/visualize.py --project data/video_001 --robot
 ```
 
 ## Web UI
 
 ```bash
-# Run server (from video2robot root)
-uvicorn web.app:app --host 0.0.0.0 --port 8000
+conda activate phmr
+python -m pip install -U fastapi "uvicorn[standard]" jinja2 python-multipart
 
-# Access in browser
-# http://localhost:8000
+# 建议固定端口，避免 iframe 随机端口拒绝连接
+pkill -f "video2robot/visualization/robot_viser.py"
+export VISER_FIXED_PORT=8789
+
+cd /root/gpufree-data/video2robot
+python -m uvicorn web.app:app --host 0.0.0.0 --port 8000
 ```
 
-Features:
-- Prompt input → Video generation → Pose extraction → Robot conversion automatic pipeline
-- Video upload support
-- Veo/Sora model selection
-- 3D visualization (viser)
-- Video-3D synchronized playback
+浏览器打开：`http://localhost:8000`
 
-## Environment Setup
+## MuJoCo 录制
+
+### 单机器人
 
 ```bash
-# Create .env file
-cp .env.example .env
-
-# Set API key
-echo "GOOGLE_API_KEY=your-api-key" >> .env
+conda activate gmr
+cd third_party/GMR
+python scripts/vis_robot_motion.py \
+  --robot unitree_g1 \
+  --robot_motion_path /root/gpufree-data/video2robot/data/video_005/robot_motion.pkl \
+  --record_video \
+  --video_path /root/gpufree-data/video2robot/data/video_005/mujoco_robot.mp4
 ```
 
-## Supported Robots
+### 多机器人（本仓库新增）
 
-| Robot | ID | DOF |
-|-------|-----|-----|
-| Unitree G1 | `unitree_g1` | 29 |
-| Unitree H1 | `unitree_h1` | 19 |
-| Booster T1 | `booster_t1` | 23 |
-
-See [GMR README](third_party/GMR/README.md) for full list
-
-## Output Format
-
-```python
-# robot_motion.pkl
-{
-    "fps": 30.0,
-    "robot_type": "unitree_g1",
-    "num_frames": 240,
-    "root_pos": np.ndarray,    # (N, 3)
-    "root_rot": np.ndarray,    # (N, 4) quaternion xyzw
-    "dof_pos": np.ndarray,     # (N, DOF)
-}
+```bash
+conda activate gmr
+cd third_party/GMR
+python scripts/vis_robot_motion_multi.py \
+  --robot unitree_g1 \
+  --robot_motion_paths \
+    /root/gpufree-data/video2robot/data/video_005/robot_motion_track_1.pkl \
+    /root/gpufree-data/video2robot/data/video_005/robot_motion_track_2.pkl \
+  --record_video \
+  --max_seconds 10 \
+  --camera_azimuth 0 \
+  --video_path /root/gpufree-data/video2robot/data/video_005/mujoco_multi_robot_10s_front.mp4
 ```
 
+可选相机参数（轻微拉近）：
 
-## TODO
+- `--camera_distance_scale 0.82`
+- `--camera_elevation -8`
+- `--camera_lookat_y_offset 0.1`
 
-- [ ] **`lastFrame` (Start/End Frame Interpolation)** - Veo 3.1 only
-  - Start image + End image → Generate video smoothly connecting the two
-  - Useful for "Pose A → Pose B" robot motion videos
+## Submodule 与补丁策略（推荐）
 
-- [ ] **`referenceImages` (Reference Images)** - Veo 3.1 only
-  - Up to 3 reference images to maintain character/style
-  - Generate videos with specific character performing actions
+本项目建议保留 submodule，不建议把 `third_party` 全量并入主仓库（体积会非常大）。
 
-## Acknowledgements
+建议交付方式：
 
-This project builds upon the following excellent open source projects:
+1. 记录基线 commit
+2. 导出主仓库与 submodule patch
+3. 在目标机器应用 patch
 
-- [PromptHMR](https://github.com/yufu-wang/PromptHMR): 3D human mesh recovery from video
-- [GMR](https://github.com/YanjieZe/GMR): general motion retargeting framework
+### 记录基线 commit
 
-## License
+```bash
+git rev-parse HEAD
+git -C third_party/PromptHMR rev-parse HEAD
+git -C third_party/GMR rev-parse HEAD
+```
 
-This project depends on third-party libraries with their own licenses:
+### 生成 patch
 
-- **[GMR](third_party/GMR/LICENSE)**: MIT License
-- **[PromptHMR](third_party/PromptHMR/LICENSE)**: Non-Commercial Scientific Research Use Only
+```bash
+mkdir -p patches
+git diff > patches/main.patch
+git -C third_party/PromptHMR diff > patches/prompthmr.patch
+git -C third_party/GMR diff > patches/gmr.patch
+```
 
-Please review both licenses before use.
+### 应用 patch（在同基线上）
 
-> The core video2robot code is MIT-licensed, but using this
-> repository end-to-end (including PromptHMR) inherits PromptHMR's
-> **Non-Commercial Scientific Research Only** restriction. Commercial use
-> requires obtaining appropriate permission from the PromptHMR authors.
+```bash
+git apply patches/main.patch
+git -C third_party/PromptHMR apply ../../patches/prompthmr.patch
+git -C third_party/GMR apply ../../patches/gmr.patch
+```
+
+## 许可证说明
+
+- 主仓库代码：MIT
+- `PromptHMR`：非商业科研限制
+- `GMR`：MIT
+
+使用前请确认第三方许可证要求。

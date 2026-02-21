@@ -733,17 +733,24 @@ def main() -> None:
     parser.add_argument("--track-index", type=int, help="Legacy single track index (1-based)")
     parser.add_argument("--tracks", type=int, nargs="+", help="Specific track indices to visualize together")
     parser.add_argument("--all-tracks", action="store_true", help="Visualize every available track simultaneously")
-    parser.add_argument("--img-maxsize", type=int, default=320, help="Max image size for viser frustum textures (0 = no resize)")
+    parser.add_argument("--img-maxsize", type=int, default=0, help="Max image size for viser frustum textures (0 = no resize)")
 
     parser.add_argument("--robot-type", default=None, help="Override robot type (default: from motion file)")
     parser.add_argument("--robot-xml", default=None, help="Override MJCF xml path")
     parser.add_argument("--proxy", action="store_true", help="Render as proxy cubes instead of real robot meshes")
     parser.add_argument("--cube-size", type=float, default=0.03, help="Cube size (meters) when using --proxy")
+    parser.add_argument(
+        "--material-mode",
+        choices=["color", "metal"],
+        default="color",
+        help="Robot appearance: color=track colors, metal=original mesh color",
+    )
 
     parser.add_argument("--no-floor", action="store_true", help="Disable floor rendering")
     parser.add_argument("--floor-margin", type=float, default=1.5, help="Floor extent margin around trajectories (meters)")
     parser.add_argument("--frustum-scale", type=float, default=0.4, help="Video camera frustum scale")
     parser.add_argument("--frustum-fov", type=float, default=0.96, help="Video camera frustum FOV (radians)")
+    parser.add_argument("--frustum-image-stride", type=int, default=2, help="Update frustum image every N frames to reduce blur from bandwidth pressure")
 
     parser.add_argument("--host", default="0.0.0.0", help="Viser server host (default: 0.0.0.0 for external access)")
     parser.add_argument("--port", type=int, default=8789, help="Viser server port (default: 8789)")
@@ -900,8 +907,9 @@ def main() -> None:
         min=1,
         max=60,
         step=0.1,
-        initial_value=float(video_fps) / float(args.subsample),
+        initial_value=min(float(video_fps) / float(args.subsample), 12.0),
     )
+    last_frustum_image_idx = {"value": -1}
 
     @gui_next_frame.on_click
     def _(_) -> None:
@@ -1045,13 +1053,14 @@ def main() -> None:
             base_path = f"/robots/track_{entry.track_index}"
             for k in range(num_links):
                 lf = server.scene.add_frame(f"{base_path}/link_{k}", show_axes=False)
+                cube_color = entry.color if args.material_mode == "color" else (170, 170, 170)
                 server.scene.add_mesh_simple(
                     f"{base_path}/link_{k}/cube",
                     vertices=cube_v,
                     faces=cube_f,
                     flat_shading=False,
                     wireframe=False,
-                    color=entry.color,
+                    color=cube_color,
                 )
                 entry.proxy_frames.append(lf)
     else:
@@ -1068,7 +1077,7 @@ def main() -> None:
                 entry.body_frames[body_name] = server.scene.add_frame(frame_path, show_axes=False)
                 for gi, geom in enumerate(geoms):
                     mesh_copy = geom["trimesh"].copy()
-                    color = entry.color if len(entries) > 1 else geom["color"]
+                    color = entry.color if args.material_mode == "color" else geom["color"]
                     mesh_copy.visual = trimesh.visual.ColorVisuals(
                         mesh=mesh_copy,
                         face_colors=[*color, 255],
@@ -1103,7 +1112,16 @@ def main() -> None:
 
             if frustum.visible:
                 try:
-                    frustum.image = frames[vis_idx]
+                    stride = max(1, int(args.frustum_image_stride))
+                    should_update = (
+                        vis_idx == 0
+                        or vis_idx == (num_vis_frames - 1)
+                        or (vis_idx % stride == 0)
+                        or (not gui_playing.value)
+                    )
+                    if should_update and last_frustum_image_idx["value"] != vis_idx:
+                        frustum.image = frames[vis_idx]
+                        last_frustum_image_idx["value"] = vis_idx
                 except Exception:
                     pass
 

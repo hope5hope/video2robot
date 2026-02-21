@@ -21,7 +21,7 @@ class GenerateVideoRequest(BaseModel):
     project: str
     action: Optional[str] = None
     raw_prompt: Optional[str] = None
-    model: str = "veo-3.1-fast"  # veo-3.1-fast, veo-3.1, veo-3.0-fast, veo-3.0, veo-2.0, sora, sora-pro
+    model: str = "seedance"  # seedance, veo-3.1-fast, veo-3.1, veo-3.0-fast, veo-3.0, veo-2.0, sora, sora-pro
     duration: int = 8
 
 
@@ -44,7 +44,7 @@ class RunPipelineRequest(BaseModel):
     action: Optional[str] = None
     raw_prompt: Optional[str] = None
     video_path: Optional[str] = None
-    model: str = "veo-3.1-fast"
+    model: str = "seedance"
     duration: int = 8
     robot_type: str = "unitree_g1"
     static_camera: bool = False

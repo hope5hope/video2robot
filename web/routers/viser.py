@@ -35,6 +35,7 @@ class StartViserRequest(BaseModel):
     project: str
     all_tracks: bool = True
     twist: bool = False
+    material_mode: str = "color"
 
 
 class StopViserRequest(BaseModel):
@@ -50,6 +51,7 @@ async def start_viser(request: StartViserRequest, req: Request):
             request.project,
             all_tracks=request.all_tracks,
             twist=request.twist,
+            material_mode=request.material_mode,
         )
 
         host = _resolve_host(req)

@@ -7,7 +7,7 @@ Automatically handles conda environment switching:
 - Step 3: Runs in gmr environment (GMR retargeting)
 
 Usage:
-    # From action with Veo (default) - uses BASE_PROMPT template
+    # From action with Seedance (default) - uses BASE_PROMPT template
     python scripts/run_pipeline.py --action "Action sequence:
     The subject walks forward with four steps."
 
@@ -48,7 +48,7 @@ def run_video_generation(
     model: str = "veo",
     size: str = "1280x720",
 ):
-    """Run video generation (Veo or Sora) in phmr env via subprocess."""
+    """Run video generation (Seedance/Veo/Sora) in phmr env via subprocess."""
     video_path = project_dir / "original.mp4"
     if video_path.exists() and not force:
         print(f"[Step 1/3] Video exists: {video_path} (use --force to regenerate)")
@@ -87,7 +87,14 @@ def run_video_generation(
     else:
         argv.extend(["--veo-model", veo_model, "--aspect-ratio", aspect_ratio])
 
-    model_name = "Sora Pro" if model == "sora-pro" else ("Sora" if model == "sora" else "Veo")
+    if model == "sora-pro":
+        model_name = "Sora Pro"
+    elif model == "sora":
+        model_name = "Sora"
+    elif model == "veo":
+        model_name = "Veo"
+    else:
+        model_name = "Seedance"
     print(f"\n[Step 1/3] Generating video with {model_name} (env={phmr_env})...")
     print(f"[Step 1/3] Command: {' '.join(argv)}")
     run_in_conda(phmr_env, argv, cwd=PROJECT_ROOT)
@@ -203,11 +210,11 @@ def main():
 
     # Video generation options
     video_group = parser.add_argument_group("Video Generation")
-    video_group.add_argument("--model", "-m", default="veo",
-                             choices=["veo", "sora", "sora-pro"],
-                             help="Video generation model (default: veo)")
+    video_group.add_argument("--model", "-m", default="seedance",
+                             choices=["seedance", "veo", "sora", "sora-pro"],
+                             help="Video generation model (default: seedance)")
     video_group.add_argument("--duration", type=int, default=8,
-                             help="Video duration in seconds (Veo: 4-8, Sora: 4/8/12)")
+                             help="Video duration in seconds (Seedance: e.g. 8, Veo: 4-8, Sora: 4/8/12)")
     # Veo-specific
     video_group.add_argument("--veo-model", default="veo-3.1-fast-generate-preview", help="Veo model ID")
     video_group.add_argument("--aspect-ratio", default="16:9", choices=["16:9", "9:16"],

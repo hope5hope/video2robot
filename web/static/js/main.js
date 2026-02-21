@@ -39,6 +39,7 @@ let activeViserProject = null;
 let viserStarting = false;
 let viserFrameToken = null;
 let viserFrameReady = false;
+let viserReconnectAttempts = 0;
 
 // Elements
 const projectList = document.getElementById('project-list');
@@ -93,7 +94,7 @@ async function loadProjects() {
 
 function renderProjectList(projects) {
     if (projects.length === 0) {
-        projectList.innerHTML = `<div class="px-4 py-8 text-center text-gray-500 text-sm">No projects</div>`;
+        projectList.innerHTML = `<div class="px-4 py-8 text-center text-gray-500 text-sm">暂无项目</div>`;
         return;
     }
 
@@ -103,8 +104,8 @@ function renderProjectList(projects) {
             <div class="flex items-center justify-between">
                 <span class="font-medium text-sm text-gray-900">${p.name}</span>
                 <div class="flex gap-1">
-                    ${p.has_video ? '<span class="badge badge-success">Video</span>' : '<span class="badge badge-pending">Video</span>'}
-                    ${p.has_pose ? '<span class="badge badge-success">Pose</span>' : '<span class="badge badge-pending">Pose</span>'}
+                    ${p.has_video ? '<span class="badge badge-success">视频</span>' : '<span class="badge badge-pending">视频</span>'}
+                    ${p.has_pose ? '<span class="badge badge-success">姿态</span>' : '<span class="badge badge-pending">姿态</span>'}
                     ${p.has_robot ? `<span class="badge badge-success">${p.robot_type || 'Unitree G1'}</span>` : ''}
                 </div>
             </div>
@@ -150,8 +151,8 @@ function renderProjectDetail(detail) {
 
     // Status badges in header
     detailBadges.innerHTML = `
-        ${detail.has_video ? '<span class="badge badge-success">Video</span>' : '<span class="badge badge-pending">Video</span>'}
-        ${detail.has_pose ? '<span class="badge badge-success">Pose</span>' : '<span class="badge badge-pending">Pose</span>'}
+        ${detail.has_video ? '<span class="badge badge-success">视频</span>' : '<span class="badge badge-pending">视频</span>'}
+        ${detail.has_pose ? '<span class="badge badge-success">姿态</span>' : '<span class="badge badge-pending">姿态</span>'}
         ${detail.has_robot ? `<span class="badge badge-success">${detail.robot_type || 'Unitree G1'}</span>` : ''}
     `;
 
@@ -163,7 +164,7 @@ function renderProjectDetail(detail) {
         html += `
             <div>
                 <p id="prompt-text" class="text-sm text-gray-700 line-clamp-2">${escapeHtml(detail.prompt)}</p>
-                <button id="btn-toggle-prompt" class="text-xs text-blue-600 hover:underline mt-1">Show more</button>
+                <button id="btn-toggle-prompt" class="text-xs text-blue-600 hover:underline mt-1">展开</button>
             </div>
         `;
     }
@@ -176,7 +177,7 @@ function renderProjectDetail(detail) {
             </video>
         `;
     } else {
-        html += `<p class="text-gray-400 text-sm text-center py-12">No video</p>`;
+        html += `<p class="text-gray-400 text-sm text-center py-12">暂无视频</p>`;
     }
 
     html += '</div>';
@@ -206,7 +207,7 @@ function setupPromptToggle() {
     btn.addEventListener('click', () => {
         expanded = !expanded;
         text.classList.toggle('line-clamp-2', !expanded);
-        btn.textContent = expanded ? 'Show less' : 'Show more';
+        btn.textContent = expanded ? '收起' : '展开';
     });
 }
 
@@ -225,7 +226,7 @@ document.getElementById('btn-start-pipeline').addEventListener('click', async ()
     const mode = document.querySelector('input[name="input-mode"]:checked').value;
 
     btn.disabled = true;
-    btn.textContent = 'Processing...';
+    btn.textContent = '处理中...';
 
     await stopCurrentVisualization({ silent: true });
 
@@ -233,9 +234,9 @@ document.getElementById('btn-start-pipeline').addEventListener('click', async ()
     currentProject = null;
     document.querySelectorAll('.project-item').forEach(el => el.classList.remove('selected'));
 
-    detailTitle.textContent = 'Select Project';
+    detailTitle.textContent = '请选择项目';
     detailBadges.innerHTML = '';
-    detailContent.innerHTML = '<p class="text-gray-500 text-sm">Select a project from the left</p>';
+    detailContent.innerHTML = '<p class="text-gray-500 text-sm">请在左侧选择项目</p>';
     detailActions.classList.add('hidden');
 
     visualization.classList.add('hidden');
@@ -249,7 +250,7 @@ document.getElementById('btn-start-pipeline').addEventListener('click', async ()
             const staticCamera = isStaticCamera();
 
             if (!action) {
-                alert('Please enter action description');
+                alert('请输入动作描述');
                 return;
             }
 
@@ -285,7 +286,7 @@ document.getElementById('btn-start-pipeline').addEventListener('click', async ()
             const staticCamera = isStaticCamera();
 
             if (!fileInput.files.length) {
-                alert('Please select a video file');
+                alert('请选择视频文件');
                 return;
             }
 
@@ -303,7 +304,7 @@ document.getElementById('btn-start-pipeline').addEventListener('click', async ()
             });
 
             if (!uploadRes.ok) {
-                throw new Error('Upload failed');
+                throw new Error('上传失败');
             }
 
             // Start pose extraction
@@ -321,10 +322,10 @@ document.getElementById('btn-start-pipeline').addEventListener('click', async ()
         }
 
     } catch (e) {
-        alert(`Error: ${e.message}`);
+        alert(`错误：${e.message}`);
     } finally {
         btn.disabled = false;
-        btn.textContent = 'Start Pipeline';
+        btn.textContent = '开始执行流程';
     }
 });
 
@@ -472,19 +473,19 @@ function formatTime(seconds) {
 
 function getTaskTypeLabel(type) {
     const labels = {
-        'generate_video': 'Video Generation',
-        'extract_pose': 'Pose Extraction',
-        'retarget': 'Robot Retarget',
+        'generate_video': '视频生成',
+        'extract_pose': '姿态提取',
+        'retarget': '机器人重定向',
     };
     return labels[type] || type;
 }
 
 function getStatusLabel(status) {
     const labels = {
-        'pending': 'Pending',
-        'running': 'Running',
-        'completed': 'Completed',
-        'failed': 'Failed',
+        'pending': '等待中',
+        'running': '运行中',
+        'completed': '已完成',
+        'failed': '失败',
     };
     return labels[status] || status;
 }
@@ -512,7 +513,7 @@ document.getElementById('btn-extract-pose').addEventListener('click', async () =
         startTaskPolling();
         renderTaskStatus();
     } catch (e) {
-        alert(`Error: ${e.message}`);
+        alert(`错误：${e.message}`);
     }
 });
 
@@ -526,14 +527,17 @@ document.getElementById('btn-retarget').addEventListener('click', async () => {
         startTaskPolling();
         renderTaskStatus();
     } catch (e) {
-        alert(`Error: ${e.message}`);
+        alert(`错误：${e.message}`);
     }
 });
 
 // Visualization controls
-async function openVisualization(project) {
+async function openVisualization(project, options = {}) {
+    const { forceRestart = false } = options;
     if (!project) return;
-    if (activeViserProject === project && viserFrameReady) {
+    if (forceRestart && activeViserProject === project) {
+        await stopCurrentVisualization({ silent: true });
+    } else if (activeViserProject === project && viserFrameReady) {
         visualization.classList.remove('hidden');
         viserLoading.classList.add('hidden');
         return;
@@ -543,10 +547,10 @@ async function openVisualization(project) {
     const btn = document.getElementById('btn-visualize');
     viserStarting = true;
     btn.disabled = true;
-    btn.textContent = 'Starting...';
+    btn.textContent = '启动中...';
 
     visualization.classList.remove('hidden');
-    showViserLoading('Starting viser server...');
+    showViserLoading('正在启动 3D 可视化服务...');
 
     const requestedProject = project;
 
@@ -554,6 +558,7 @@ async function openVisualization(project) {
         const result = await api('POST', '/viser/start', {
             project,
             all_tracks: true,
+            material_mode: getRobotAppearanceMode(),
         });
 
         if (currentProject !== requestedProject) {
@@ -569,12 +574,12 @@ async function openVisualization(project) {
         if (session.url) {
             setViserFrameSource(session.url);
         } else {
-            showViserLoading('Failed to get viser URL', true);
+            showViserLoading('未获取到可视化地址', true);
         }
     } catch (e) {
         showViserLoading(e.message, true);
     } finally {
-        btn.textContent = 'Visualize';
+        btn.textContent = '可视化';
         btn.disabled = false;
         viserStarting = false;
     }
@@ -627,7 +632,7 @@ function resetVisualizationFrame() {
 
 function setViserFrameSource(url) {
     if (!url) {
-        showViserLoading('Unable to set viser URL', true);
+        showViserLoading('无法设置可视化地址', true);
         return;
     }
 
@@ -641,7 +646,8 @@ function setViserFrameSource(url) {
 
     viserFrameToken = url;
     viserFrameReady = false;
-    showViserLoading('Connecting to viser...');
+    viserReconnectAttempts = 0;
+    showViserLoading('正在连接可视化服务...');
     viserFrame.src = url;
 }
 
@@ -650,6 +656,7 @@ viserFrame.addEventListener('load', () => {
         return;
     }
     viserFrameReady = true;
+    viserReconnectAttempts = 0;
     viserLoading.classList.add('hidden');
 });
 
@@ -658,8 +665,29 @@ viserFrame.addEventListener('error', () => {
         return;
     }
     viserFrameReady = false;
+    if (viserReconnectAttempts >= 2 || !currentProject) {
+        viserLoading.classList.remove('hidden');
+        viserLoading.innerHTML = '<span class="text-red-500">可视化连接失败，请点击“可视化”重试</span>';
+        return;
+    }
+    viserReconnectAttempts += 1;
     viserLoading.classList.remove('hidden');
-    viserLoading.innerHTML = '<span class="text-red-500">Retrying viser connection...</span>';
+    viserLoading.innerHTML = '<span class="text-red-500">可视化连接中断，正在重连...</span>';
+    setTimeout(async () => {
+        try {
+            const result = await api('POST', '/viser/start', {
+                project: currentProject,
+                all_tracks: true,
+                material_mode: getRobotAppearanceMode(),
+            });
+            const session = result.session || {};
+            if (session.url) {
+                setViserFrameSource(session.url);
+            }
+        } catch (e) {
+            viserLoading.innerHTML = `<span class="text-red-500">${e.message || '重连失败'}</span>`;
+        }
+    }, 1200);
 });
 
 // Helpers
@@ -700,6 +728,21 @@ function isBasePromptEnabled() {
 
 function isStaticCamera() {
     return document.getElementById('toggle-static-camera').checked;
+}
+
+function getRobotAppearanceMode() {
+    const el = document.getElementById('input-robot-appearance');
+    if (!el) return 'color';
+    return el.value === 'metal' ? 'metal' : 'color';
+}
+
+const robotAppearanceSelect = document.getElementById('input-robot-appearance');
+if (robotAppearanceSelect) {
+    robotAppearanceSelect.addEventListener('change', async () => {
+        if (!currentProject || !activeViserProject) return;
+        visualizationManuallyHidden = false;
+        await openVisualization(currentProject, { forceRestart: true });
+    });
 }
 
 // Init

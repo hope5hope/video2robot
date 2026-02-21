@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate video using Google Veo or OpenAI Sora
+Generate video using Seedance / Google Veo / OpenAI Sora
 
 Usage:
     # With action (uses BASE_PROMPT template for robot retargeting)
@@ -11,6 +11,9 @@ Usage:
 
     # With raw prompt (no template)
     python scripts/generate_video.py --raw-prompt "A person dancing"
+
+    # With Seedance
+    python scripts/generate_video.py --model seedance --action "..."
 
     # With Sora
     python scripts/generate_video.py --model sora --action "..."
@@ -32,14 +35,14 @@ from video2robot.utils import ensure_project_dir
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate video using Veo or Sora",
+        description="Generate video using Seedance / Veo / Sora",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     # Model selection
-    parser.add_argument("--model", "-m", default="veo",
-                        choices=["veo", "sora", "sora-pro"],
-                        help="Video generation model (default: veo)")
+    parser.add_argument("--model", "-m", default="seedance",
+                        choices=["seedance", "veo", "sora", "sora-pro"],
+                        help="Video generation model (default: seedance)")
 
     # Prompt options (mutually exclusive)
     prompt_group = parser.add_argument_group("Prompt options")
@@ -52,20 +55,20 @@ def main():
     # Common arguments
     parser.add_argument("--name", "-n", help="Project folder name (default: video_XXX)")
     parser.add_argument("--duration", type=int, default=8,
-                        help="Duration in seconds (Veo: 4-8, Sora: 4/8/12)")
+                        help="Duration in seconds (Seedance: e.g. 8, Veo: 4-8, Sora: 4/8/12)")
 
-    # Veo-specific arguments
-    veo_group = parser.add_argument_group("Veo options")
+    # Seedance/Veo arguments
+    veo_group = parser.add_argument_group("Seedance/Veo options")
     veo_group.add_argument("--image", "-i", help="Input image for image-to-video (Veo only)")
     veo_group.add_argument("--veo-model", default="veo-3.1-fast-generate-preview",
                            help="Veo model: veo-3.1-generate-preview, veo-3.1-fast-generate-preview, "
                                 "veo-3.0-generate-001, veo-3.0-fast-generate-001, veo-2.0-generate-001")
     veo_group.add_argument("--aspect-ratio", default="16:9", choices=["16:9", "9:16"],
-                           help="Aspect ratio for Veo")
+                           help="Aspect ratio for Seedance/Veo")
     veo_group.add_argument("--seed", type=int, help="Random seed (Veo only)")
     veo_group.add_argument("--negative", "-neg", help="Negative prompt (Veo only)")
     veo_group.add_argument("--resolution", choices=["720p", "1080p"],
-                           help="Resolution (Veo3+, 1080p requires 8s)")
+                           help="Resolution (Seedance/Veo)")
     veo_group.add_argument("--person", default="allow_all",
                            choices=["allow_all", "allow_adult", "dont_allow"],
                            help="Person generation (Veo only)")
@@ -97,6 +100,8 @@ def main():
     if args.model in ("sora", "sora-pro"):
         provider = "sora"
         sora_model_id = "sora-2-pro" if args.model == "sora-pro" else "sora-2"
+    elif args.model == "seedance":
+        provider = "seedance"
     else:
         provider = "veo"
 
@@ -120,6 +125,28 @@ def main():
             "sora": {
                 "model_id": sora_model_id,
                 "size": args.size,
+                "duration_seconds": args.duration,
+            },
+        }
+    elif provider == "seedance":
+        from video2robot.video import SeedanceClient
+        client = SeedanceClient()
+        client.generate(
+            prompt=final_prompt,
+            output_path=str(output_path),
+            aspect_ratio=args.aspect_ratio,
+            resolution=args.resolution or "720p",
+            duration_seconds=args.duration,
+        )
+        metadata = {
+            "created_at": datetime.now().isoformat(),
+            "action": action_text,
+            "prompt": final_prompt,
+            "model": args.model,
+            "provider": "seedance",
+            "seedance": {
+                "aspect_ratio": args.aspect_ratio,
+                "resolution": args.resolution or "720p",
                 "duration_seconds": args.duration,
             },
         }

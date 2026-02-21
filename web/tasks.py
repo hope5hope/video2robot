@@ -1,7 +1,9 @@
 """Background task management."""
 
 import asyncio
+import os
 import re
+import shutil
 import subprocess
 import uuid
 from dataclasses import dataclass, field
@@ -209,12 +211,24 @@ class TaskManager:
         "veo-2.0": "veo-2.0-generate-001",
     }
 
+    def _resolve_conda_executable(self) -> str:
+        """Resolve conda executable robustly for non-interactive subprocesses."""
+        conda_exe = os.environ.get("CONDA_EXE") or shutil.which("conda")
+        if not conda_exe and Path("/opt/conda/bin/conda").exists():
+            conda_exe = "/opt/conda/bin/conda"
+        if not conda_exe:
+            raise RuntimeError(
+                "Could not locate `conda` executable. "
+                "Set CONDA_EXE or ensure conda is in PATH."
+            )
+        return conda_exe
+
     async def run_generate_video(
         self,
         task: Task,
         action: Optional[str] = None,
         raw_prompt: Optional[str] = None,
-        model: str = "veo-3.1-fast",
+        model: str = "seedance",
         duration: int = 8,
         phmr_env: str = "phmr",
     ):
@@ -235,18 +249,22 @@ class TaskManager:
         )
 
         try:
+            conda_exe = self._resolve_conda_executable()
             script = PROJECT_ROOT / "scripts" / "generate_video.py"
 
             # Determine model parameters
             if model in self.VEO_MODEL_MAP:
                 cli_model = "veo"
                 veo_model_id = self.VEO_MODEL_MAP[model]
+            elif model == "seedance":
+                cli_model = "seedance"
+                veo_model_id = None
             else:
                 cli_model = model  # sora, sora-pro
                 veo_model_id = None
 
             cmd = [
-                "conda", "run", "-n", phmr_env, "--no-capture-output",
+                conda_exe, "run", "-n", phmr_env, "--no-capture-output",
                 "python", str(script),
                 "--model", cli_model,
                 "--name", task.project,
@@ -431,12 +449,13 @@ class TaskManager:
         )
 
         try:
+            conda_exe = self._resolve_conda_executable()
             from video2robot.config import DATA_DIR
             project_dir = DATA_DIR / task.project
 
             script = PROJECT_ROOT / "scripts" / "extract_pose.py"
             cmd = [
-                "conda", "run", "-n", phmr_env, "--no-capture-output",
+                conda_exe, "run", "-n", phmr_env, "--no-capture-output",
                 "python", str(script),
                 "--project", str(project_dir),
             ]
@@ -534,12 +553,13 @@ class TaskManager:
         )
 
         try:
+            conda_exe = self._resolve_conda_executable()
             from video2robot.config import DATA_DIR
             project_dir = DATA_DIR / task.project
 
             script = PROJECT_ROOT / "scripts" / "convert_to_robot.py"
             cmd = [
-                "conda", "run", "-n", gmr_env, "--no-capture-output",
+                conda_exe, "run", "-n", gmr_env, "--no-capture-output",
                 "python", str(script),
                 "--project", str(project_dir),
                 "--robot", robot_type,
