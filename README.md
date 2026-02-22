@@ -28,6 +28,52 @@
 - `phmr`：视频生成 + 姿态提取 + Web + robot-viser
 - `gmr`：机器人重定向 + MuJoCo 可视化/录制
 
+### 环境复刻（推荐：YAML + patch）
+
+目标：在另一台服务器尽量“一键”复现当前可用环境与代码改动。
+
+#### A) 克隆你的 fork（含子模块）
+
+```bash
+git clone --recursive https://github.com/hope5hope/video2robot.git
+cd video2robot
+git submodule update --init --recursive
+```
+
+#### B) 用 YAML 创建两个环境
+
+```bash
+conda env create -f envs/gmr.yml
+conda env create -f envs/phmr.yml
+```
+
+若环境已存在，可改为：
+
+```bash
+conda env update -n gmr -f envs/gmr.yml --prune
+conda env update -n phmr -f envs/phmr.yml --prune
+```
+
+#### C) 应用 3 个 patch（主仓库 + 两个子仓库）
+
+```bash
+git apply patches/main.patch
+git -C third_party/PromptHMR apply ../../patches/prompthmr.patch
+git -C third_party/GMR apply ../../patches/gmr.patch
+```
+
+> 注意：patch 需要在匹配的基线 commit 上应用（见 `PATCHES.md`）。
+
+#### D) 在当前机器导出 YAML（用于迁移到其他服务器）
+
+```bash
+mkdir -p envs
+conda env export -n gmr > envs/gmr.yml
+conda env export -n phmr > envs/phmr.yml
+```
+
+> 说明：YAML 会记录多数 conda/pip 包，但不会自动包含你手工改过的源码、未提交补丁或额外下载的模型文件，所以仍需配合 `patches/*.patch` 与模型下载步骤。
+
 ### 1) 克隆（含 submodule）
 
 ```bash
